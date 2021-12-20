@@ -1,0 +1,33 @@
+
+name: CodeBuild
+
+on: [push, pull_request]
+jobs:
+  build:
+    name: Test of the clock-controller.ino compilation for the ESP32 target
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+
+    - name: Checkout AsyncTCP library
+      uses: actions/checkout@v2
+      with:
+        repository: me-no-dev/AsyncTCP
+        ref: master
+        path: CustomAsyncTCP # must contain string "Custom"
+
+    - name: Checkout ESPAsyncWebServer library
+      uses: actions/checkout@v2
+      with:
+        repository: me-no-dev/ESPAsyncWebServer
+        ref: master
+        path: CustomESPAsyncWebServer # must contain string "Custom"
+
+    - name: Compile scetch
+      uses: ArminJo/arduino-test-compile@v2
+      with:
+        arduino-board-fqbn: esp32:esp32:esp32:PSRAM=disabled,PartitionScheme=default,CPUFreq=240,FlashMode=qio,FlashFreq=80,FlashSize=4M,UploadSpeed=921600,DebugLevel=none
+        platform-url: https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+        sketch-names: marantz.ino
