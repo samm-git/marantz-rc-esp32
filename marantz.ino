@@ -215,7 +215,7 @@ void setup()
   // Print ESP Local IP Address
   Serial.println(WiFi.localIP());
   // Enable automatic reconnect to AP
-  WiFi.setAutoReconnect(true)
+  WiFi.setAutoReconnect(true);
 
   // Route for root / web page
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
