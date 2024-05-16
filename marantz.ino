@@ -1,14 +1,16 @@
 // marantz wired remote control web server
 // inspired by https://github.com/Arduino-IRremote/Arduino-IRremote
+// Ported code by samm-git for esp8266.  Added mDNS capability, some code modifications.
+// Module used here was a Wemos D1 Mini Pro. 
 // see https://smallhacks.wordpress.com/2021/07/07/controlling-marantz-amplifier-using-arduino-via-remote-socket/
 
-#define IR_TX_PIN 12 // pin to use for tx, connect via diode to "remote in" socket
+#define IR_TX_PIN 4 // pin to use for tx, connect via diode to "remote in" socket
 
 // Replace with your network credentials
 const char* ssid = "<wifi_ssid>";
 const char* password = "<wifi_password>";
 // bssid of the wifi AP if you want to connect to fixed base
-byte bssid[] = {0x01,0x02,0x03,0x04,0x05,0x06};
+// byte bssid[] = {0x01,0x02,0x03,0x04,0x05,0x06};
 
 /* some definitions from the IRremote Arduino Library */
 #define RC5_ADDRESS_BITS 5
@@ -22,13 +24,13 @@ byte bssid[] = {0x01,0x02,0x03,0x04,0x05,0x06};
 #define RC5_DURATION (15L * RC5_UNIT)  // 13335
 #define RC5_REPEAT_PERIOD (128L *RC5_UNIT)  // 113792
 #define RC5_REPEAT_SPACE (RC5_REPEAT_PERIOD - RC5_DURATION)  // 100 ms
+#define MDNS_HOSTNAME "amp"    // mDNS hostname http://amp.local
 
 // Import required libraries
-#include <Preferences.h>
-#include <WiFi.h>
-#include <esp_wifi.h>
-#include <AsyncTCP.h>
+#include <ESP8266WiFi.h>
+#include <ESPAsyncTCP.h>
 #include <ESPAsyncWebServer.h>
+#include <ESP8266mDNS.h>  // Include the mDNS library
 #include "html.h"
 
 // Create AsyncWebServer object on port 80
@@ -76,7 +78,7 @@ int sendRC5(uint8_t aAddress, uint8_t aCommand, uint_fast8_t aNumberOfRepeats)
     sLastSendToggleValue = 0;
   }
 
-  uint_fast8_t tNumberOfCommands = aNumberOfRepeats + 1;
+  uint_fast8_t tNumberOfCommands = aNumberOfRepeats;
 
   while (tNumberOfCommands > 0)
   {
@@ -158,6 +160,7 @@ int sendRC5_X(uint8_t aAddress, uint8_t aCommand, uint8_t aExt, uint_fast8_t aNu
         Serial.print("<p>");
 #endif
         // space marker for marantz rc5 extension
+        digitalWrite(IR_TX_PIN, LOW);
         delayMicroseconds(RC5_UNIT *2 *2);
       }
     }
@@ -228,38 +231,37 @@ void setup()
     // GET input1 value on <ESP_IP>/update?output=<inputMessage1>&state=<inputMessage2>
     if (request->hasParam("button")) {
       inputMessage1 = request->getParam("button")->value();
-      if (strcmp ("standby", inputMessage1.c_str()) == 0) {
-         sendRC5(16, 12, 1);
+        if (strcmp("standby", inputMessage1.c_str()) == 0) {
+        sendRC5(16, 12, 1);
       }
-      if (strcmp ("phono", inputMessage1.c_str()) == 0) {
-         sendRC5(21, 63, 1);
+      if (strcmp("phono", inputMessage1.c_str()) == 0) {
+        sendRC5(21, 63, 1);
       }
-      if (strcmp ("cd", inputMessage1.c_str()) == 0) {
-         sendRC5(20, 63, 1);
+      if (strcmp("cd", inputMessage1.c_str()) == 0) {
+        sendRC5(20, 63, 1);
       }
-      if (strcmp ("tuner", inputMessage1.c_str()) == 0) {
-         sendRC5(17, 63, 1);
+      if (strcmp("tuner", inputMessage1.c_str()) == 0) {
+        sendRC5(17, 63, 1);
       }
-      if (strcmp ("aux1", inputMessage1.c_str()) == 0) {
-         sendRC5_X(16, 0, 6, 1);
+      if (strcmp("network", inputMessage1.c_str()) == 0) {
+        sendRC5_X(25, 63, 10, 1);
       }
-      if (strcmp ("aux2", inputMessage1.c_str()) == 0) {
-         sendRC5_X(16, 0, 7, 1);
+      if (strcmp("optical", inputMessage1.c_str()) == 0) {
+        sendRC5_X(16, 1, 40, 1);
       }
-      if (strcmp ("dcc", inputMessage1.c_str()) == 0) {
-         sendRC5(23, 63, 1);
+      if (strcmp("dcc", inputMessage1.c_str()) == 0) {
+        sendRC5(23, 63, 1);
       }
-      if (strcmp ("tape", inputMessage1.c_str()) == 0) {
-         sendRC5(18, 63, 1);
+      if (strcmp("tape", inputMessage1.c_str()) == 0) {
+        sendRC5(18, 63, 1);
       }
-      if (strcmp ("volume_up", inputMessage1.c_str()) == 0) {
-         sendRC5(16, 16, 1);
+      if (strcmp("volume_up", inputMessage1.c_str()) == 0) {
+        sendRC5(16, 16, 1);
       }
-      if (strcmp ("volume_down", inputMessage1.c_str()) == 0) {
-         sendRC5(16, 17, 1);
+      if (strcmp("volume_down", inputMessage1.c_str()) == 0) {
+        sendRC5(16, 17, 1);
       }
-    }
-    else {
+    } else {
       inputMessage1 = "No message sent";
     }
     Serial.print("Button: ");
@@ -267,11 +269,17 @@ void setup()
     Serial.print("\n");
     request->send(200, "text/plain", "OK\n");
   });
-  
+
+
+  if (!MDNS.begin(MDNS_HOSTNAME)) {  // Start the mDNS responder for amp.local
+    Serial.println("Error setting up MDNS responder!");
+  }
+  Serial.println("mDNS responder started");
+  MDNS.addService("http", "tcp", 80);
   // Start server
   server.begin();
 }
 
-void loop()
-{
+void loop() {
+  MDNS.update();
 }
