@@ -7,8 +7,6 @@
 // Replace with your network credentials
 const char* ssid = "<wifi_ssid>";
 const char* password = "<wifi_password>";
-// bssid of the wifi AP if you want to connect to fixed base
-byte bssid[] = {0x01,0x02,0x03,0x04,0x05,0x06};
 
 /* some definitions from the IRremote Arduino Library */
 #define RC5_ADDRESS_BITS 5
@@ -191,6 +189,22 @@ void send_1()
   delayMicroseconds(RC5_UNIT);
 }
 
+void WiFiEvent(arduino_event_id_t event)
+{
+  switch (event)
+  {
+    case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
+      Serial.println("WiFi disconnected");
+      break;
+    case ARDUINO_EVENT_WIFI_STA_GOT_IP:
+      Serial.print("WiFi connected: ");
+      Serial.println(WiFi.localIP());
+      break;
+    default:
+      break;
+  }
+}
+
 void setup()
 {
   //start serial connection
@@ -204,18 +218,28 @@ void setup()
   WiFi.mode (WIFI_STA);
   esp_wifi_set_ps(WIFI_PS_NONE);
 
-  WiFi.begin(ssid, password, 0, bssid);
-  // or, if you dont want bssid locking, use
-  // WiFi.begin(ssid, password); 
-
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
-    Serial.println("Connecting to WiFi..");
-  }
-  // Print ESP Local IP Address
-  Serial.println(WiFi.localIP());
-  // Enable automatic reconnect to AP
+  // Enable automatic reconnect before connecting
   WiFi.setAutoReconnect(true);
+  WiFi.begin(ssid, password);
+
+  // Non-blocking connect with timeout so a missing AP at boot
+  // does not hang the device forever
+  uint32_t tConnectStart = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - tConnectStart < 30000) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println();
+
+  if (WiFi.status() == WL_CONNECTED) {
+    // Print ESP Local IP Address
+    Serial.println(WiFi.localIP());
+  } else {
+    Serial.println("WiFi not connected at boot, will retry in loop()");
+  }
+
+  // React to connection state changes immediately
+  WiFi.onEvent(WiFiEvent);
 
   // Route for root / web page
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
@@ -274,4 +298,14 @@ void setup()
 
 void loop()
 {
+  // Reconnect watchdog: auto-reconnect alone is not always reliable
+  static unsigned long tLastCheck = 0;
+  if (millis() - tLastCheck > 10000) {
+    tLastCheck = millis();
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("WiFi lost, reconnecting...");
+      WiFi.disconnect();
+      WiFi.reconnect();
+    }
+  }
 }

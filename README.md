@@ -19,6 +19,18 @@ Initially device WIFI latency was very unstable, so power manager was disabled t
 
 HTML source could be found in the [html.h](html.h) header, it is using some rudimentary scripting (e.g. `onclick` instead of DOM listeners) to be compatible with my older iPad. Protocol is one-way, so its not possible to grab device status. HTTP was choosen as it is compatible with any web browser.
 
+## 26 MHz crystal workaround
+
+This board uses an ESP32 with a **26 MHz crystal**, but ESP32 Arduino core **3.x** defaults to 40 MHz (core 2.x auto-detected it, 3.x does not - see [espressif/arduino-esp32#9837](https://github.com/espressif/arduino-esp32/issues/9837)). The mismatch shifts UART baud, `millis()` and WiFi timing by a factor of 40/26 and stops the device from working.
+
+The fix is in [build_opt.h](build_opt.h), which is force-included into every compilation unit (including the core's `main.cpp`) at build time:
+
+```
+-DF_XTAL_MHZ=26
+```
+
+This activates the official `F_XTAL_MHZ` handling in the core before `initArduino()` runs. Note it must be a compiler flag (`-DF_XTAL_MHZ=26`), not a `#define` - a `#define` in the sketch would not reach `main.cpp`. Leave the file as is; remove it only if you build this sketch for a 40 MHz board.
+
 ## Screenshot
 
 ![image](screenshot.png)

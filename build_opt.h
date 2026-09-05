@@ -1,0 +1,1 @@
+-DF_XTAL_MHZ=26
